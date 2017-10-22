@@ -1,0 +1,60 @@
+#!/bin/bash
+# Copyright © 2017 Martin Ueding <dev@martin-ueding.de>
+
+set -e
+set -u
+set -x
+
+tempdir="$(mktemp -d)"
+
+pdfunite "$@" "$tempdir/complete.pdf"
+
+pdfimages "$tempdir/complete.pdf" "$tempdir/raw"
+
+images=( "$tempdir"/raw-* )
+num_images="${#images[@]}"
+num_pages=$(( num_images * 2 ))
+
+right=1
+left="$num_pages"
+
+crop() {
+    local filename="$1"
+    local format="$2"
+    local counter="$3"
+
+    printf -v outname 'page-%06d.ppm' "$counter"
+
+    convert "$filename" -crop "$format" +repage "$tempdir/$outname"
+}
+
+swap="false"
+
+for image in "${images[@]}"; do
+    width="$(identify -format '%[width]' "$image")"
+    height="$(identify -format '%[height]' "$image")"
+
+    if [[ "$swap" == false ]]; then
+        first="$left"
+        second="$right"
+        swap="true"
+    else
+        first="$right"
+        second="$left"
+        swap="false"
+    fi
+
+    crop "$image" $(( width / 2))x${height}+0+0 $first
+    crop "$image" $(( width / 2))x${height}+$(( width / 2 + 1 ))+0 $second
+
+    : $(( right++ ))
+    : $(( left-- ))
+done
+
+ls -lh "$tempdir"
+
+convert "$tempdir"/page-* out.pdf
+
+tree "$tempdir"
+
+rm -rf "$tempdir"
